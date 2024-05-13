@@ -46,8 +46,26 @@ def get_tiny_images(image_paths):
     # TODO: YOUR CODE HERE                                                      #
     #############################################################################
 
-    raise NotImplementedError('`get_tiny_images` function in ' +
-                              '`student_code.py` needs to be implemented')
+    for path in image_paths:
+        # Load image
+        img = load_image_gray(path)  # Load as grayscale
+        if img is None:
+            continue
+
+        # Resize image to 16x16
+        img = cv2.resize(img, (16, 16))
+
+        # Flatten the image to a 1D vector
+        img_vector = img.flatten()
+
+        # Append to feats
+        feats.append(img_vector)
+
+    # Convert feats to numpy array
+    feats = np.array(feats)
+
+    # Zero mean and unit length normalization
+    feats = (feats - np.mean(feats, axis=1, keepdims=True)) / np.std(feats, axis=1, keepdims=True)
 
     #############################################################################
     #                             END OF YOUR CODE                              #
@@ -110,13 +128,31 @@ def build_vocabulary(image_paths, vocab_size):
     # length of the SIFT descriptors that you are going to compute.
     dim = 128
     vocab = np.zeros((vocab_size, dim))
+    descriptors_list = []
 
     #############################################################################
     # TODO: YOUR CODE HERE                                                      #
     #############################################################################
 
-    raise NotImplementedError('`build_vocabulary` function in ' +
-                              '`student_code.py` needs to be implemented') 
+    for path in image_paths:
+        # Load the image
+        image = load_image_gray(path)
+        # Get some SIFT features from the image
+        frames, descriptors = vlfeat.sift.dsift(image,fast=True,step=10)
+        # Append the descriptors to the list
+        descriptors_list.append(descriptors)
+
+    # Stack all descriptors into a single numpy array
+    all_descriptors = np.vstack(descriptors_list)
+    
+    
+
+    # Subsample the descriptors if needed (optional)
+    # This is to save memory and speed up clustering
+
+    # Cluster the descriptors with kmeans
+    
+    cluster_centers = vlfeat.kmeans.kmeans(all_descriptors.astype(np.float32), vocab_size) 
 
     #############################################################################
     #                             END OF YOUR CODE                              #
@@ -187,8 +223,22 @@ def get_bags_of_sifts(image_paths, vocab_filename):
     # TODO: YOUR CODE HERE                                                      #
     #############################################################################
 
-    raise NotImplementedError('`get_bags_of_sifts` function in ' +
-                              '`student_code.py` needs to be implemented')
+    for path in image_paths:
+        # Load the image
+        img = load_image_gray(path)
+        # Extract SIFT features
+        _, descriptors = vlfeat.sift.dsift(img, fast=True,step=10)  # You may adjust parameters here
+        # Assign each local feature to its nearest cluster center
+        assignments = vlfeat.kmeans.kmeans_quantize(descriptors.astype(np.float32), vocab.astype(np.float32))
+        # Build histogram indicating how many times each cluster was used
+        hist, _ = np.histogram(assignments, bins=np.arange(len(vocab) + 1))
+        # Normalize histogram
+        hist = hist.astype(float) / np.sum(hist)
+        # Append the normalized histogram to feats
+        feats.append(hist)
+
+    # Convert feats to numpy array
+    feats = np.array(feats)
     
 
     #############################################################################
@@ -234,13 +284,24 @@ def nearest_neighbor_classify(train_image_feats, train_labels, test_image_feats,
             predicted category for each testing image
     """
     test_labels = []
+    k=5
 
     #############################################################################
     # TODO: YOUR CODE HERE                                                      #
     #############################################################################
 
-    raise NotImplementedError('`nearest_neighbor_classify` function in ' +
-                              '`student_code.py` needs to be implemented')
+    distances = sklearn_pairwise.pairwise_distances(test_image_feats, train_image_feats, metric=metric)
+    
+    # 对于每个测试图像，找到最近的k个邻居
+    for i in range(distances.shape[0]):
+        # 找到最近的k个邻居的索引
+        nearest_neighbors_indices = np.argsort(distances[i])[:k]
+        # 从训练标签中获取最近邻居的标签
+        nearest_labels = [train_labels[idx] for idx in nearest_neighbors_indices]
+        # 投票以确定测试图像的标签
+        # 这里我们简单地选择票数最多的标签
+        predicted_label = max(set(nearest_labels), key=nearest_labels.count)
+        test_labels.append(predicted_label)
     
     #############################################################################
     #                             END OF YOUR CODE                              #
